@@ -283,3 +283,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
 - [React](https://reactjs.org/) - Frontend framework
 
+# APK
