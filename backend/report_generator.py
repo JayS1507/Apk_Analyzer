@@ -1,24 +1,43 @@
-import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
 from datetime import datetime
 import json
 
-try:
-    from reportlab.lib.pagesizes import letter, A4
+if TYPE_CHECKING:
+    from reportlab.lib.pagesizes import A4
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
     from reportlab.lib.units import inch
-    REPORTLAB_AVAILABLE = True
+    from jinja2 import Template
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    reportlab_available = True
 except ImportError:
-    REPORTLAB_AVAILABLE = False
+    # Define dummy classes to avoid type errors
+    A4 = None  # type: ignore
+    SimpleDocTemplate = None  # type: ignore
+    Paragraph = None  # type: ignore
+    Spacer = None  # type: ignore
+    Table = None  # type: ignore
+    TableStyle = None  # type: ignore
+    getSampleStyleSheet = None  # type: ignore
+    ParagraphStyle = None  # type: ignore
+    colors = None  # type: ignore
+    inch = None  # type: ignore
+    reportlab_available = False
 
 try:
     from jinja2 import Template
-    JINJA2_AVAILABLE = True
+    jinja2_available = True
 except ImportError:
-    JINJA2_AVAILABLE = False
+    Template = None  # type: ignore
+    jinja2_available = False
 
 class ReportGenerator:
     def __init__(self):
@@ -27,15 +46,15 @@ class ReportGenerator:
     
     async def generate_pdf_report(self, analysis_result: Dict[str, Any], analysis_id: str) -> str:
         """Generate PDF report"""
-        if not REPORTLAB_AVAILABLE:
+        if not reportlab_available:
             raise Exception("ReportLab not available. Install with: pip install reportlab")
-        
+
         report_path = self.reports_dir / f"apk_report_{analysis_id}.pdf"
-        
+
         doc = SimpleDocTemplate(str(report_path), pagesize=A4)
         styles = getSampleStyleSheet()
         story = []
-        
+
         # Title
         title_style = ParagraphStyle(
             'CustomTitle',
@@ -44,11 +63,11 @@ class ReportGenerator:
             spaceAfter=30,
             alignment=1  # Center alignment
         )
-        story.append(Paragraph("APK Inspector Report", title_style))
+        story.append(Paragraph("Deep Malware Analysis Report", title_style))
         story.append(Spacer(1, 12))
-        
+
         # Analysis info
-        info_style = ParagraphStyle(
+        info_style = styles.ParagraphStyle(
             'Info',
             parent=styles['Normal'],
             fontSize=10,
@@ -56,6 +75,96 @@ class ReportGenerator:
         )
         story.append(Paragraph(f"Analysis ID: {analysis_id}", info_style))
         story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", info_style))
+        story.append(Spacer(1, 20))
+
+        # Executive Summary for Cyber Cell Officers
+        story.append(Paragraph("EXECUTIVE SUMMARY", styles['Heading2']))
+
+        # Threat Level Assessment
+        malware_score = analysis_result.get("malware_score", 0)
+        threat_level = analysis_result.get("threat_level", "LOW")
+
+        threat_color = colors.red if threat_level == "HIGH" else colors.orange if threat_level == "MEDIUM" else colors.green
+
+        threat_style = styles.ParagraphStyle(
+            'ThreatLevel',
+            parent=styles['Normal'],
+            fontSize=14,
+            textColor=threat_color,
+            spaceAfter=12
+        )
+
+        story.append(Paragraph(f"<b>THREAT LEVEL: {threat_level}</b>", threat_style))
+        story.append(Paragraph(f"<b>MALWARE SCORE: {malware_score}/100</b>", threat_style))
+        story.append(Spacer(1, 12))
+        
+        # Key Findings Summary
+        summary_points = []
+        
+        # Package info
+        package_name = analysis_result.get("package_name", "Unknown")
+        summary_points.append(f"• <b>Application:</b> {package_name}")
+        
+        # Malware behaviors
+        malware_profile = analysis_result.get("malware_profile", {})
+        behaviors = malware_profile.get("behaviors", {})
+        
+        critical_behaviors = []
+        if behaviors.get("cryptocurrency_mining"):
+            critical_behaviors.append("Cryptocurrency Mining")
+        if behaviors.get("data_exfiltration"):
+            critical_behaviors.append("Data Exfiltration")
+        if behaviors.get("persistence"):
+            critical_behaviors.append("Persistence Mechanisms")
+        if behaviors.get("further_infection"):
+            critical_behaviors.append("Further Infection Capabilities")
+        if behaviors.get("remote_control"):
+            critical_behaviors.append("Remote Control")
+        
+        if critical_behaviors:
+            summary_points.append(f"• <b>Critical Behaviors Detected:</b> {', '.join(critical_behaviors)}")
+        
+        # IOCs
+        iocs = malware_profile.get("iocs", {})
+        ioc_count = len(iocs.get("domains", [])) + len(iocs.get("ips_ports", [])) + len(iocs.get("wallets", []))
+        if ioc_count > 0:
+            summary_points.append(f"• <b>Indicators of Compromise:</b> {ioc_count} domains/IPs/wallets identified")
+        
+        # External Intelligence
+        external_intel = analysis_result.get("external_intel", {})
+        intel_sources = []
+        if external_intel.get("virustotal"):
+            intel_sources.append("VirusTotal")
+        if external_intel.get("otx"):
+            intel_sources.append("OTX")
+        if external_intel.get("gsb"):
+            intel_sources.append("Google Safe Browsing")
+        if external_intel.get("hybrid_analysis"):
+            intel_sources.append("Hybrid Analysis")
+        
+        if intel_sources:
+            summary_points.append(f"• <b>External Intelligence:</b> Confirmed via {', '.join(intel_sources)}")
+        
+        # Recommendations
+        if threat_level == "HIGH":
+            summary_points.append("• <b>IMMEDIATE ACTION REQUIRED:</b> Block all IOCs, remove APK, reset devices")
+        elif threat_level == "MEDIUM":
+            summary_points.append("• <b>CAUTION:</b> Monitor for suspicious activity, consider blocking IOCs")
+        else:
+            summary_points.append("• <b>LOW RISK:</b> Standard monitoring recommended")
+        
+        # Add summary points
+        for point in summary_points:
+            story.append(Paragraph(point, styles['Normal']))
+        
+        # Simple Hindi/Marathi Summary for Non-Technical Users
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("सामान्य भाषा में सारांश (Summary in Simple Language)", styles['Heading3']))
+        
+        # Generate simple language summary
+        simple_summary = self._generate_simple_summary(analysis_result)
+        story.append(Paragraph(simple_summary, styles['Normal']))
+        
         story.append(Spacer(1, 20))
         
         # Basic Information
@@ -261,6 +370,40 @@ class ReportGenerator:
                     story.append(Paragraph(f"• {w}", styles['Normal']))
             story.append(Spacer(1, 10))
 
+            # Cryptocurrency Mining Details (PDF)
+            if malware.get('mining_details') and malware.get('behaviors', {}).get('cryptocurrency_mining'):
+                story.append(Paragraph("Cryptocurrency Mining Details", styles['Heading2']))
+                mining_details = malware['mining_details']
+
+                if mining_details.get('chains'):
+                    story.append(Paragraph("Targeted Blockchains", styles['Heading3']))
+                    for chain in mining_details['chains']:
+                        story.append(Paragraph(f"• {chain}", styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+                if mining_details.get('wallets'):
+                    story.append(Paragraph("Wallet Addresses", styles['Heading3']))
+                    for wallet in mining_details['wallets']:
+                        story.append(Paragraph(f"• {wallet}", styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+                if mining_details.get('pools'):
+                    story.append(Paragraph("Mining Pools", styles['Heading3']))
+                    for pool in mining_details['pools']:
+                        story.append(Paragraph(f"• {pool}", styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+                if mining_details.get('algorithms'):
+                    story.append(Paragraph("Mining Algorithms", styles['Heading3']))
+                    for algo in mining_details['algorithms']:
+                        story.append(Paragraph(f"• {algo}", styles['Normal']))
+
+                if mining_details.get('config_params'):
+                    story.append(Paragraph("Mining Configuration Parameters", styles['Heading3']))
+                    for param in mining_details['config_params']:
+                        story.append(Paragraph(f"• {param}", styles['Normal']))
+                    story.append(Spacer(1, 6))
+
             # FCM chain
             fcmi = malware.get('fcmi_chain', {})
             story.append(Paragraph("Firebase-based Remote Control Chain", styles['Heading3']))
@@ -278,7 +421,7 @@ class ReportGenerator:
     
     async def generate_html_report(self, analysis_result: Dict[str, Any], analysis_id: str) -> str:
         """Generate HTML report"""
-        if not JINJA2_AVAILABLE:
+        if not jinja2_available:
             raise Exception("Jinja2 not available. Install with: pip install jinja2")
         
         report_path = self.reports_dir / f"apk_report_{analysis_id}.html"
@@ -398,6 +541,83 @@ class ReportGenerator:
             font-size: 12px;
             margin-bottom: 30px;
         }
+        .executive-summary {
+            background-color: #f8f9fa;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .executive-summary h2 {
+            color: #007bff;
+            text-align: center;
+            margin-top: 0;
+            border: none;
+            padding: 0;
+        }
+        .threat-assessment {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .threat-level {
+            display: inline-block;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin: 10px;
+        }
+        .threat-level.high {
+            background-color: #dc3545;
+            color: white;
+        }
+        .threat-level.medium {
+            background-color: #fd7e14;
+            color: white;
+        }
+        .threat-level.low {
+            background-color: #28a745;
+            color: white;
+        }
+        .threat-level h3 {
+            margin: 5px 0;
+            font-size: 18px;
+        }
+        .summary-points {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .summary-points h4 {
+            color: #333;
+            margin-top: 0;
+        }
+        .summary-points ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .summary-points li {
+            margin: 8px 0;
+            line-height: 1.4;
+        }
+        .simple-summary {
+            background-color: #e8f4fd;
+            border: 1px solid #007bff;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .simple-summary h4 {
+            color: #007bff;
+            margin-top: 0;
+            font-size: 16px;
+        }
+        .summary-text {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            text-align: justify;
+        }
     </style>
 </head>
 <body>
@@ -407,6 +627,78 @@ class ReportGenerator:
         <div class="meta-info">
             <p>Analysis ID: {{ analysis_id }}</p>
             <p>Generated: {{ generated_at }}</p>
+        </div>
+        
+        <!-- Executive Summary for Cyber Cell Officers -->
+        <div class="executive-summary">
+            <h2>EXECUTIVE SUMMARY</h2>
+            {% set malware_score = analysis_result.malware_score or 0 %}
+            {% set threat_level = analysis_result.threat_level or 'LOW' %}
+            
+            <div class="threat-assessment">
+                <div class="threat-level {{ threat_level.lower() }}">
+                    <h3>THREAT LEVEL: {{ threat_level }}</h3>
+                    <h3>MALWARE SCORE: {{ malware_score }}/100</h3>
+                </div>
+            </div>
+            
+            <div class="summary-points">
+                <h4>Key Findings:</h4>
+                <ul>
+                    <li><strong>Application:</strong> {{ analysis_result.package_name or 'Unknown' }}</li>
+                    
+                    {% set malware = analysis_result.malware_profile %}
+                    {% if malware and malware.behaviors %}
+                    {% set behaviors = malware.behaviors %}
+                    {% set critical_behaviors = [] %}
+                    {% if behaviors.cryptocurrency_mining %}{% set _ = critical_behaviors.append('Cryptocurrency Mining') %}{% endif %}
+                    {% if behaviors.data_exfiltration %}{% set _ = critical_behaviors.append('Data Exfiltration') %}{% endif %}
+                    {% if behaviors.persistence %}{% set _ = critical_behaviors.append('Persistence Mechanisms') %}{% endif %}
+                    {% if behaviors.further_infection %}{% set _ = critical_behaviors.append('Further Infection Capabilities') %}{% endif %}
+                    {% if behaviors.remote_control %}{% set _ = critical_behaviors.append('Remote Control') %}{% endif %}
+                    
+                    {% if critical_behaviors %}
+                    <li><strong>Critical Behaviors Detected:</strong> {{ critical_behaviors|join(', ') }}</li>
+                    {% endif %}
+                    {% endif %}
+                    
+                    {% if malware and malware.iocs %}
+                    {% set ioc_count = (malware.iocs.domains|length) + (malware.iocs.ips_ports|length) + (malware.iocs.wallets|length) %}
+                    {% if ioc_count > 0 %}
+                    <li><strong>Indicators of Compromise:</strong> {{ ioc_count }} domains/IPs/wallets identified</li>
+                    {% endif %}
+                    {% endif %}
+                    
+                    {% set intel = analysis_result.external_intel %}
+                    {% if intel %}
+                    {% set intel_sources = [] %}
+                    {% if intel.virustotal %}{% set _ = intel_sources.append('VirusTotal') %}{% endif %}
+                    {% if intel.otx %}{% set _ = intel_sources.append('OTX') %}{% endif %}
+                    {% if intel.gsb %}{% set _ = intel_sources.append('Google Safe Browsing') %}{% endif %}
+                    {% if intel.hybrid_analysis %}{% set _ = intel_sources.append('Hybrid Analysis') %}{% endif %}
+                    
+                    {% if intel_sources %}
+                    <li><strong>External Intelligence:</strong> Confirmed via {{ intel_sources|join(', ') }}</li>
+                    {% endif %}
+                    {% endif %}
+                    
+                    {% if threat_level == 'HIGH' %}
+                    <li><strong>IMMEDIATE ACTION REQUIRED:</strong> Block all IOCs, remove APK, reset devices</li>
+                    {% elif threat_level == 'MEDIUM' %}
+                    <li><strong>CAUTION:</strong> Monitor for suspicious activity, consider blocking IOCs</li>
+                    {% else %}
+                    <li><strong>LOW RISK:</strong> Standard monitoring recommended</li>
+                    {% endif %}
+                </ul>
+            </div>
+            
+            <!-- Simple Hindi/Marathi Summary for Non-Technical Users -->
+            <div class="simple-summary">
+                <h4>सामान्य भाषा में सारांश (Summary in Simple Language)</h4>
+                <div class="summary-text">
+                    {{ simple_summary }}
+                </div>
+            </div>
         </div>
         
         <div class="stats">
@@ -431,6 +723,7 @@ class ReportGenerator:
         <h2>Contents</h2>
         <ol>
             <li>App Metadata</li>
+            <li>Potential Indicators of Compromise (IOCs)</li>
             <li>Permissions Requested</li>
             <li>Declared Components
                 <ol>
@@ -460,9 +753,9 @@ class ReportGenerator:
                     <li>WebView Abuse</li>
                 </ol>
             </li>
+            <li>Cryptocurrency Mining Details</li>
             <li>Obfuscation & Evasion</li>
             <li>Interesting Strings & Artifacts</li>
-            <li>Potential Indicators of Compromise (IOCs)</li>
             <li>Persistence & Stealth</li>
             <li>Final Investigation Addendum: Firebase-Based Remote Control & Attribution Chain
                 <ol>
@@ -500,126 +793,8 @@ class ReportGenerator:
             </div>
         </div>
         
-        {% if analysis_result.permissions %}
-        <h2>2. Permissions Requested</h2>
-        <div class="list-container">
-            <ul>
-                {% for permission in analysis_result.permissions %}
-                <li>{{ permission }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        <h2>3. Declared Components</h2>
-        
-        {% if analysis_result.activities %}
-        <h3>3.1 Activities</h3>
-        <div class="list-container">
-            <ul>
-                {% for activity in analysis_result.activities %}
-                <li>{{ activity }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        {% if analysis_result.services %}
-        <h3>3.2 Services</h3>
-        <div class="list-container">
-            <ul>
-                {% for service in analysis_result.services %}
-                <li>{{ service }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        {% if analysis_result.receivers %}
-        <h3>3.3 Receivers</h3>
-        <div class="list-container">
-            <ul>
-                {% for receiver in analysis_result.receivers %}
-                <li>{{ receiver }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        {% if analysis_result.providers %}
-        <h3>3.4 Providers</h3>
-        <div class="list-container">
-            <ul>
-                {% for provider in analysis_result.providers %}
-                <li>{{ provider }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        <h2>4. Network Connections & Command-and-Control (C2)</h2>
+        <h2>2. Potential Indicators of Compromise (IOCs)</h2>
         {% set malware = analysis_result.malware_profile %}
-        {% if malware %}
-        {% for label, key in [
-            ('4.1 Mining Pools', 'mining_pools'),
-            ('4.2 WebView/Phishing/Ads', 'webview_ads'),
-            ('4.3 Data Exfiltration', 'data_exfiltration'),
-            ('4.4 Analytics/Tracking', 'analytics_tracking'),
-            ('4.5 Firebase/Google', 'firebase_google')
-        ] %}
-        {% set vals = malware.network[key] %}
-        {% if vals %}
-        <h3>{{ label }}</h3>
-        <div class="list-container">
-            <ul>
-                {% for v in vals %}
-                <li>{{ v }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% endfor %}
-        {% endif %}
-
-        <h2>5. Malicious Behaviors & Capabilities</h2>
-        {% if malware %}
-        <div class="list-container">
-            <ul>
-                <li>5.1 Cryptocurrency Mining — {{ 'Yes' if malware.behaviors.cryptocurrency_mining else 'No' }}</li>
-                <li>5.2 Data Exfiltration — {{ 'Yes' if malware.behaviors.data_exfiltration else 'No' }}</li>
-                <li>5.3 Persistence — {{ 'Yes' if malware.behaviors.persistence else 'No' }}</li>
-                <li>5.4 Further Infection — {{ 'Yes' if malware.behaviors.further_infection else 'No' }}</li>
-                <li>5.5 App Enumeration — {{ 'Yes' if malware.behaviors.app_enumeration else 'No' }}</li>
-                <li>5.6 Remote Control — {{ 'Yes' if malware.behaviors.remote_control else 'No' }}</li>
-                <li>5.7 WebView Abuse — {{ 'Yes' if malware.behaviors.webview_abuse else 'No' }}</li>
-            </ul>
-        </div>
-        {% endif %}
-        
-        {% if analysis_result.urls_found %}
-        <h2>6. Obfuscation & Evasion</h2>
-        {% if malware and malware.obfuscation_evasion %}
-        <div class="list-container">
-            <ul>
-                {% for item in malware.obfuscation_evasion %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        <h2>7. Interesting Strings & Artifacts</h2>
-        {% if malware and malware.interesting_strings %}
-        <div class="list-container">
-            <ul>
-                {% for s in malware.interesting_strings %}
-                <li>{{ s }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        <h2>8. Potential Indicators of Compromise (IOCs)</h2>
         {% if malware %}
         {% if malware.iocs.domains %}
         <h3>Domains</h3>
@@ -654,10 +829,179 @@ class ReportGenerator:
             </ul>
         </div>
         {% endif %}
+        {% else %}
+        <p>No IOCs detected in this analysis.</p>
         {% endif %}
+        
+        {% if analysis_result.permissions %}
+        <h2>3. Permissions Requested</h2>
+        <div class="list-container">
+            <ul>
+                {% for permission in analysis_result.permissions %}
+                <li>{{ permission }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <h2>4. Declared Components</h2>
+        
+        {% if analysis_result.activities %}
+        <h3>4.1 Activities</h3>
+        <div class="list-container">
+            <ul>
+                {% for activity in analysis_result.activities %}
+                <li>{{ activity }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if analysis_result.services %}
+        <h3>4.2 Services</h3>
+        <div class="list-container">
+            <ul>
+                {% for service in analysis_result.services %}
+                <li>{{ service }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if analysis_result.receivers %}
+        <h3>4.3 Receivers</h3>
+        <div class="list-container">
+            <ul>
+                {% for receiver in analysis_result.receivers %}
+                <li>{{ receiver }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if analysis_result.providers %}
+        <h3>4.4 Providers</h3>
+        <div class="list-container">
+            <ul>
+                {% for provider in analysis_result.providers %}
+                <li>{{ provider }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <h2>5. Network Connections & Command-and-Control (C2)</h2>
+        {% set malware = analysis_result.malware_profile %}
+        {% if malware %}
+        {% for label, key in [
+            ('5.1 Mining Pools', 'mining_pools'),
+            ('5.2 WebView/Phishing/Ads', 'webview_ads'),
+            ('5.3 Data Exfiltration', 'data_exfiltration'),
+            ('5.4 Analytics/Tracking', 'analytics_tracking'),
+            ('5.5 Firebase/Google', 'firebase_google')
+        ] %}
+        {% set vals = malware.network[key] %}
+        {% if vals %}
+        <h3>{{ label }}</h3>
+        <div class="list-container">
+            <ul>
+                {% for v in vals %}
+                <li>{{ v }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endfor %}
         {% endif %}
 
-        <h2>9. Persistence & Stealth</h2>
+        <h2>6. Malicious Behaviors & Capabilities</h2>
+        {% if malware %}
+        <div class="list-container">
+            <ul>
+                <li>6.1 Cryptocurrency Mining — {{ 'Yes' if malware.behaviors.cryptocurrency_mining else 'No' }}</li>
+                <li>6.2 Data Exfiltration — {{ 'Yes' if malware.behaviors.data_exfiltration else 'No' }}</li>
+                <li>6.3 Persistence — {{ 'Yes' if malware.behaviors.persistence else 'No' }}</li>
+                <li>6.4 Further Infection — {{ 'Yes' if malware.behaviors.further_infection else 'No' }}</li>
+                <li>6.5 App Enumeration — {{ 'Yes' if malware.behaviors.app_enumeration else 'No' }}</li>
+                <li>6.6 Remote Control — {{ 'Yes' if malware.behaviors.remote_control else 'No' }}</li>
+                <li>6.7 WebView Abuse — {{ 'Yes' if malware.behaviors.webview_abuse else 'No' }}</li>
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if malware and malware.mining_details and malware.behaviors.cryptocurrency_mining %}
+        <h2>7. Cryptocurrency Mining Details</h2>
+        <div class="list-container">
+            {% if malware.mining_details.chains %}
+            <h3>Targeted Blockchains</h3>
+            <ul>
+                {% for chain in malware.mining_details.chains %}
+                <li>{{ chain }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if malware.mining_details.wallets %}
+            <h3>Wallet Addresses</h3>
+            <ul>
+                {% for wallet in malware.mining_details.wallets %}
+                <li><code>{{ wallet }}</code></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if malware.mining_details.pools %}
+            <h3>Mining Pools</h3>
+            <ul>
+                {% for pool in malware.mining_details.pools %}
+                <li>{{ pool }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if malware.mining_details.algorithms %}
+            <h3>Mining Algorithms</h3>
+            <ul>
+                {% for algo in malware.mining_details.algorithms %}
+                <li>{{ algo }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if malware.mining_details.config_params %}
+            <h3>Mining Configuration Parameters</h3>
+            <ul>
+                {% for param in malware.mining_details.config_params %}
+                <li>{{ param }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <h2>8. Obfuscation & Evasion</h2>
+        {% if malware and malware.obfuscation_evasion %}
+        <div class="list-container">
+            <ul>
+                {% for item in malware.obfuscation_evasion %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <h2>9. Interesting Strings & Artifacts</h2>
+        {% if malware and malware.interesting_strings %}
+        <div class="list-container">
+            <ul>
+                {% for s in malware.interesting_strings %}
+                <li>{{ s }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <h2>10. Persistence & Stealth</h2>
         {% if malware and malware.persistence_stealth %}
         <div class="list-container"><ul>
             {% for p in malware.persistence_stealth %}
@@ -666,11 +1010,11 @@ class ReportGenerator:
         </ul></div>
         {% endif %}
 
-        <h2>10. Final Investigation Addendum: Firebase-Based Remote Control & Attribution Chain</h2>
+        <h2>11. Final Investigation Addendum: Firebase-Based Remote Control & Attribution Chain</h2>
         {% if malware %}
-        <h3>10.1 Overview</h3>
+        <h3>11.1 Overview</h3>
         <p>This section summarizes Firebase Cloud Messaging (FCM) based C2 indicators and miner activation flow.</p>
-        <h3>10.2 Firebase C2 Integration Chain</h3>
+        <h3>11.2 Firebase C2 Integration Chain</h3>
         <div class="list-container"><ul>
             <li>FirebaseMessagingService present: {{ 'Yes' if malware.fcmi_chain.has_firebase_messaging_service else 'No' }}</li>
             <li>ProcessBuilder usage: {{ 'Yes' if malware.fcmi_chain.process_builder_usage else 'No' }}</li>
@@ -678,7 +1022,7 @@ class ReportGenerator:
             <li>Dropped binaries: {{ malware.fcmi_chain.dropped_binary_names|join(', ') }}</li>
             {% endif %}
         </ul></div>
-        <h3>10.3 Attribution and Evidence Chain</h3>
+        <h3>11.3 Attribution and Evidence Chain</h3>
         <div class="list-container"><ul>
             {% if malware.iocs.wallets %}
             <li>Wallets: {{ malware.iocs.wallets|join(', ') }}</li>
@@ -687,16 +1031,16 @@ class ReportGenerator:
             <li>Mining Pools: {{ malware.network.mining_pools|join(', ') }}</li>
             {% endif %}
         </ul></div>
-        <h3>10.4 P2Pool Mining Activity Observed</h3>
+        <h3>11.4 P2Pool Mining Activity Observed</h3>
         <p>(If externally confirmed, summarize here.)</p>
-        <h3>10.5 Flow Diagram</h3>
+        <h3>11.5 Flow Diagram</h3>
         <p>Firebase push -> handler -> miner init -> binary drop -> ProcessBuilder launch -> mining.</p>
         {% endif %}
 
-        <h2>11. Summary</h2>
+        <h2>12. Summary</h2>
         <p>This application exhibits the behaviors and indicators listed above. Treat all endpoints and wallets as IOCs.</p>
 
-        <h2>12. Conclusion</h2>
+        <h2>13. Conclusion</h2>
         <p>Immediate mitigation is recommended: block domains/IPs, remove the APK, and reset devices as necessary.</p>
 
         <h2>External Intelligence</h2>
@@ -764,16 +1108,112 @@ class ReportGenerator:
 </html>
         """
         
+        # Generate simple summary for HTML
+        simple_summary = self._generate_simple_summary(analysis_result)
+        
         template = Template(html_template)
         html_content = template.render(
             analysis_id=analysis_id,
             analysis_result=analysis_result,
-            generated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            generated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            simple_summary=simple_summary
         )
         
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
         return str(report_path)
+
+    async def generate_json_report(self, analysis_result: Dict[str, Any], analysis_id: str) -> str:
+        """Generate JSON report"""
+        report_path = self.reports_dir / f"apk_report_{analysis_id}.json"
+
+        # Prepare JSON data
+        json_data = {
+            "analysis_id": analysis_id,
+            "generated_at": datetime.now().isoformat(),
+            "analysis_result": analysis_result
+        }
+
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=4, ensure_ascii=False)
+
+        return str(report_path)
+
+    def _generate_simple_summary(self, analysis_result: Dict[str, Any]) -> str:
+        """Generate simple language summary in Hindi/Marathi for non-technical users"""
+        
+        package_name = analysis_result.get("package_name", "अज्ञात ऐप")
+        malware_score = analysis_result.get("malware_score", 0)
+        threat_level = analysis_result.get("threat_level", "LOW")
+        
+        # Basic app info
+        summary_parts = [f"यह ऐप '{package_name}' का विश्लेषण है।"]
+        
+        # Threat level explanation
+        if threat_level == "HIGH":
+            summary_parts.append("⚠️ यह ऐप बहुत खतरनाक है! तुरंत हटाएं।")
+            summary_parts.append("इस ऐप में मैलवेयर (दुर्भावनापूर्ण सॉफ्टवेयर) पाया गया है।")
+        elif threat_level == "MEDIUM":
+            summary_parts.append("⚠️ यह ऐप संदिग्ध है। सावधानी बरतें।")
+            summary_parts.append("इस ऐप में कुछ संदिग्ध गतिविधियां पाई गई हैं।")
+        else:
+            summary_parts.append("✅ यह ऐप अपेक्षाकृत सुरक्षित लगता है।")
+            summary_parts.append("लेकिन फिर भी सावधानी बरतें।")
+        
+        # Malware behaviors explanation
+        malware_profile = analysis_result.get("malware_profile", {})
+        behaviors = malware_profile.get("behaviors", {})
+        
+        if behaviors.get("cryptocurrency_mining"):
+            summary_parts.append("🔴 यह ऐप आपके फोन का इस्तेमाल करके क्रिप्टोकरेंसी माइनिंग कर सकता है।")
+            summary_parts.append("इससे आपका फोन धीमा हो जाएगा और बैटरी जल्दी खत्म होगी।")
+        
+        if behaviors.get("data_exfiltration"):
+            summary_parts.append("🔴 यह ऐप आपके निजी डेटा चुरा सकता है।")
+            summary_parts.append("जैसे कि आपके कॉन्टैक्ट्स, मैसेज, और अन्य जानकारी।")
+        
+        if behaviors.get("persistence"):
+            summary_parts.append("🔴 यह ऐप आपके फोन में स्थायी रूप से रह सकता है।")
+            summary_parts.append("यहां तक कि आप इसे डिलीट करने के बाद भी।")
+        
+        if behaviors.get("further_infection"):
+            summary_parts.append("🔴 यह ऐप आपके फोन में और भी खतरनाक ऐप्स इंस्टॉल कर सकता है।")
+        
+        if behaviors.get("remote_control"):
+            summary_parts.append("🔴 यह ऐप किसी दूर से आपके फोन को कंट्रोल कर सकता है।")
+        
+        # IOCs explanation
+        iocs = malware_profile.get("iocs", {})
+        ioc_count = len(iocs.get("domains", [])) + len(iocs.get("ips_ports", [])) + len(iocs.get("wallets", []))
+        
+        if ioc_count > 0:
+            summary_parts.append(f"🔴 इस ऐप में {ioc_count} संदिग्ध वेबसाइट्स और एड्रेस पाए गए हैं।")
+            summary_parts.append("ये सभी खतरनाक हो सकते हैं।")
+        
+        # External intelligence
+        external_intel = analysis_result.get("external_intel", {})
+        if external_intel.get("virustotal") or external_intel.get("otx") or external_intel.get("gsb"):
+            summary_parts.append("🔍 विश्व स्तर के सुरक्षा विशेषज्ञों ने भी इसे खतरनाक बताया है।")
+        
+        # Recommendations
+        summary_parts.append("\n📋 क्या करें:")
+        
+        if threat_level == "HIGH":
+            summary_parts.append("• तुरंत इस ऐप को डिलीट करें")
+            summary_parts.append("• अपने फोन को रिसेट करें")
+            summary_parts.append("• सभी पासवर्ड बदलें")
+            summary_parts.append("• बैंकिंग ऐप्स का पासवर्ड तुरंत बदलें")
+        elif threat_level == "MEDIUM":
+            summary_parts.append("• इस ऐप को डिलीट करने पर विचार करें")
+            summary_parts.append("• अपने फोन की निगरानी रखें")
+            summary_parts.append("• संदिग्ध गतिविधि पर ध्यान दें")
+        else:
+            summary_parts.append("• सामान्य सावधानी बरतें")
+            summary_parts.append("• नियमित रूप से ऐप्स अपडेट करें")
+        
+        summary_parts.append("\n💡 याद रखें: कभी भी अनजान स्रोतों से ऐप्स डाउनलोड न करें।")
+        
+        return " ".join(summary_parts)
 
 

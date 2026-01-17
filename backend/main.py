@@ -127,12 +127,25 @@ async def get_analysis_results(analysis_id: str):
     """Get detailed analysis results"""
     if analysis_id not in analysis_status:
         raise HTTPException(status_code=404, detail="Analysis ID not found")
-    
+
     status = analysis_status[analysis_id]
     if status["status"] != "completed":
         raise HTTPException(status_code=400, detail="Analysis not completed yet")
-    
-    return status["result"]
+
+    result = status["result"]
+
+    # Add analysis consistency check
+    metadata = result.get("analysis_metadata", {})
+    if metadata:
+        result["analysis_consistency"] = {
+            "analysis_id": metadata.get("analysis_id"),
+            "timestamp": metadata.get("timestamp"),
+            "tools_used": metadata.get("tools_used", []),
+            "deterministic_mode": metadata.get("deterministic_mode", False),
+            "file_hash": metadata.get("file_hash")
+        }
+
+    return result
 
 @app.get("/report/{analysis_id}")
 async def generate_report(analysis_id: str, format: str = "pdf"):
@@ -160,8 +173,15 @@ async def generate_report(analysis_id: str, format: str = "pdf"):
             media_type="text/html",
             filename=f"apk_report_{analysis_id}.html"
         )
+    elif format == "json":
+        report_path = await report_gen.generate_json_report(result, analysis_id)
+        return FileResponse(
+            report_path,
+            media_type="application/json",
+            filename=f"apk_report_{analysis_id}.json"
+        )
     else:
-        raise HTTPException(status_code=400, detail="Unsupported format. Use 'pdf' or 'html'")
+        raise HTTPException(status_code=400, detail="Unsupported format. Use 'pdf', 'html', or 'json'")
 
 @app.get("/reports")
 async def list_reports():
